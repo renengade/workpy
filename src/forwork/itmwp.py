@@ -24,7 +24,7 @@ IT 审计工作底稿生成工具 — itmwp.py
    (其他均为 Python 内置模块：argparse, os, re, shutil, calendar, zipfile, xml)
 
 用法示例
-   python -m forwork itmwp huada 蒋jj limoumou 2026.7.27 2026 ELC SD OM CM
+   python -m forwork itmwp enterprise derr leader 2026.7.27 2026 ELC SD OM CM
 
 """
 
@@ -43,7 +43,6 @@ from typing import Sequence
 
 import xlwings as xw
 
-
 # ====================================================================
 #  常量
 # ====================================================================
@@ -61,9 +60,7 @@ VALID_CHOICES = ("ELC", "SD", "CM", "OM", "SA")
 def _parse_date(value: str) -> str:
     """验证并归一化日期为 YYYY.MM.DD 格式。"""
     if not re.fullmatch(r"\d{4}\.\d{1,2}\.\d{1,2}", value):
-        raise argparse.ArgumentTypeError(
-            f"日期格式错误: {value!r}，应为 YYYY.M.D，如 2026.7.27"
-        )
+        raise argparse.ArgumentTypeError(f"日期格式错误: {value!r}，应为 YYYY.M.D，如 2026.7.27")
     y, m, d = value.split(".")
     return f"{y}.{int(m):02d}.{int(d):02d}"
 
@@ -73,9 +70,7 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("client", help="客户简称（替换文件名中的 XXXX）")
     parser.add_argument("name", help="编制人员姓名")
     parser.add_argument("reviewer", help="复核人员姓名")
-    parser.add_argument(
-        "prepare", type=_parse_date, help="编制日期，格式 YYYY.M.D，如 2026.7.27"
-    )
+    parser.add_argument("prepare", type=_parse_date, help="编制日期，格式 YYYY.M.D，如 2026.7.27")
     parser.add_argument("audity", help="审计年度，如 2026")
     parser.add_argument(
         "choices",
@@ -91,7 +86,7 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="itmwp",
         description="IT 审计工作底稿批量生成工具",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="示例: python -m forwork itmwp huada 蒋jj limoumou 2026.7.27 2026 ELC SD OM CM",
+        epilog="示例: python -m forwork itmwp enterprise derr leader 2026.7.27 2026 ELC SD OM CM",
     )
     configure_parser(parser)
     return parser
@@ -131,11 +126,7 @@ def _read_folders(path: Path) -> list[str]:
                 strings.append(t.text if t is not None and t.text else "")
 
         # 读取第一个 sheet（sheet1.xml）
-        rows = (
-            ET.parse(z.open("xl/worksheets/sheet1.xml"))
-            .getroot()
-            .findall(".//s:row", ns)
-        )
+        rows = ET.parse(z.open("xl/worksheets/sheet1.xml")).getroot().findall(".//s:row", ns)
 
         # 找到列头为 "folder" 的列号
         folder_col: str | None = None
@@ -258,13 +249,13 @@ class myWorkingPaper:
         """在 {客户简称}_{审计年度}/ 下创建底稿目录树
 
         结构示例：
-          huada_2026/
-          ├─ ITELC_企业层面控制_huada_2026/
-          │  └─ ITELC_支持性文档_huada_2026/
+          enterprise_2026/
+          ├─ ITELC_企业层面控制_enterprise_2026/
+          │  └─ ITELC_支持性文档_enterprise_2026/
           │     ├─ ELC01-01 战略规划与执行情况/
           │     └─ ...
-          └─ ITGC_一般控制测试_huada_2026/
-             └─ ITGC_支持性文档_huada_2026/
+          └─ ITGC_一般控制测试_enterprise_2026/
+             └─ ITGC_支持性文档_enterprise_2026/
                 ├─ SD01-01 可行性分析与立项审批/
                 └─ ...
         """
@@ -455,7 +446,7 @@ class myWorkingPaper:
 
         例：
           "ITGC_SD_系统开发_XXXX_期间.xlsx"
-          → "ITGC_SD_系统开发_huada_2026.xlsx"
+          → "ITGC_SD_系统开发_enterprise_2026.xlsx"
         """
         return filename.replace("XXXX", self.client).replace("期间", self.audity)
 
@@ -472,9 +463,7 @@ class myWorkingPaper:
 
         # 列出模板目录下所有 .xlsx 文件（排除 Excel 临时文件 ~$）
         files = [
-            f
-            for f in template_path.iterdir()
-            if f.is_file() and f.suffix == ".xlsx" and not f.name.startswith("~$")
+            f for f in template_path.iterdir() if f.is_file() and f.suffix == ".xlsx" and not f.name.startswith("~$")
         ]
         file_names = [f.name for f in files]
 
@@ -526,9 +515,7 @@ class myWorkingPaper:
                 new_path = self.wpath / new
                 wb.save(str(new_path))
                 wb.close()
-                shutil.move(
-                    str(new_path), str(self.wpath / f"{self.client}_{self.audity}")
-                )
+                shutil.move(str(new_path), str(self.wpath / f"{self.client}_{self.audity}"))
 
         # === 移动生成的底稿到对应的子目录 ===
         base = self.wpath / f"{self.client}_{self.audity}"
@@ -544,11 +531,7 @@ class myWorkingPaper:
         # 移动所有 ITGC 底稿
         gc_dir = base / f"ITGC_一般控制测试_{self.client}_{self.audity}"
         if gc_dir.exists():
-            for f in [
-                x
-                for x in self.wpath.iterdir()
-                if x.is_file() and x.name.startswith("ITGC")
-            ]:
+            for f in [x for x in self.wpath.iterdir() if x.is_file() and x.name.startswith("ITGC")]:
                 shutil.move(str(f), str(gc_dir / f.name))
 
 
