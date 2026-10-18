@@ -2,21 +2,20 @@
 文件清单生成工具
 
 用法:
-  python get_catalogue.py                        # 交互模式
-  python get_catalogue.py xlsx                   # 导出脚本所在目录下所有 xlsx 文件清单
-  python get_catalogue.py pdf -d "D:\\Desktop"   # 指定目录 + 文件类型
-  python get_catalogue.py folder --no-export     # 仅打印子文件夹，不导出
-  python get_catalogue.py xlsx --output          # 明确导出（默认行为）
+  uv run codespace                               # 交互模式
+  uv run codespace xlsx                          # 导出当前目录下所有 xlsx 文件清单
+  uv run codespace pdf -d "D:\\Desktop"          # 指定目录 + 文件类型
+  uv run codespace folder --no-export            # 仅打印子文件夹，不导出
 
 参数:
   file_type             文件类型，如 xlsx / pdf / folder（不区分大小写）
-  -d, --dir             目标文件夹（默认: 脚本所在目录）
-  -o, --output          导出为 Excel（默认行为，可省略）
+  -d, --dir             目标文件夹（默认: 当前目录）
   -n, --no-export       仅打印到终端，不生成 Excel
 
 交互模式:
-  无参数时进入交互模式，依次输入文件夹路径、文件类型、是否导出。 
+  无参数时进入交互模式，依次输入文件夹路径、文件类型、是否导出。
 """
+
 import argparse
 import os
 import sys
@@ -32,7 +31,8 @@ def get_catalogue(folder: str, file_type: str, export: bool = True) -> pd.DataFr
 
     if file_type == "folder":
         file_list = [
-            item for item in entries
+            item
+            for item in entries
             if os.path.isdir(os.path.join(folder, item))
             and not item.startswith(".")
             and item != "__pycache__"
@@ -57,8 +57,10 @@ def get_catalogue(folder: str, file_type: str, export: bool = True) -> pd.DataFr
 
 def interactive_mode() -> None:
     """无参数时进入交互模式。"""
-    default_folder = os.path.dirname(os.path.abspath(__file__))
-    folder = input(f"请输入文件夹路径（默认: {default_folder}）: ").strip() or default_folder
+    default_folder = os.getcwd()
+    folder = (
+        input(f"请输入文件夹路径（默认: {default_folder}）: ").strip() or default_folder
+    )
 
     if not os.path.isdir(folder):
         print(f"❌ 路径不存在: {folder}")
@@ -82,13 +84,16 @@ def interactive_mode() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="生成文件夹内指定类型文件的清单")
-    parser.add_argument("file_type", nargs="?", help="文件类型（如 xlsx / pdf / folder）")
-    parser.add_argument("-d", "--dir", default=None, help="目标文件夹（默认: 脚本所在目录）")
-    parser.add_argument("-o", "--output", action="store_true", help="导出为 Excel 文件")
+    parser.add_argument(
+        "file_type", nargs="?", help="文件类型（如 xlsx / pdf / folder）"
+    )
+    parser.add_argument(
+        "-d", "--dir", default=None, help="目标文件夹（默认: 当前目录）"
+    )
     parser.add_argument("-n", "--no-export", action="store_true", help="仅打印，不导出")
     args = parser.parse_args()
 
-    folder = args.dir or os.path.dirname(os.path.abspath(__file__))
+    folder = args.dir or os.getcwd()
     if not os.path.isdir(folder):
         print(f"❌ 路径不存在: {folder}")
         sys.exit(1)
@@ -98,8 +103,6 @@ def main() -> None:
         return
 
     export = not args.no_export
-    if args.no_export:
-        export = False
 
     df = get_catalogue(folder, args.file_type, export=export)
     if export:
