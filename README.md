@@ -13,7 +13,7 @@
 | `sample` | `sampling.py` | 纯标准库读取 xlsx，可复现随机抽样并导出 | 纯标准库 |
 | `inspics` | `inspics.py` | 把图片按序号批量插入 Excel，生成汇总表 + 超链接 | xlwings, Pillow |
 | `repics` | `repics.py` | 批量按比例缩放图片，保存到输出子目录 | Pillow |
-| `mwp` | `mwp.py` | IT 审计工作底稿批量生成 | xlwings |
+| `itmwp` | `itmwp.py` | IT 审计工作底稿批量生成 | xlwings |
 
 ## 安装
 
@@ -82,10 +82,10 @@ python -m forwork inspics --path D:/photos --picwidth 15 --interval 4
 python -m forwork repics -d D:/photos -o 缩略图 --wscale 0.5 --hscale 0.5
 ```
 
-### mwp — IT 审计底稿生成
+### itmwp — IT 审计底稿生成
 
 ```bash
-python -m forwork mwp huada 蒋jj limoumou 2026.7.27 2026 ELC SD OM CM
+python -m forwork itmwp huada 蒋jj limoumou 2026.7.27 2026 ELC SD OM CM
 ```
 
 > 依赖 Excel（xlwings），目前主要在 Windows 上使用。
@@ -116,7 +116,7 @@ src/forwork/
 ├── sampling.py      # 随机抽样（纯标准库）
 ├── inspics.py       # 图片插入 Excel
 ├── repics.py        # 图片缩放
-└── mwp.py           # IT 审计底稿生成
+└── itmwp.py         # IT 审计底稿生成
 ```
 
 每个工具模块都导出三个约定函数，便于统一调度与单独测试：

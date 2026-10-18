@@ -7,13 +7,13 @@
     python -m forwork sample      xlsx 随机抽样
     python -m forwork inspics     图片批量插入 Excel
     python -m forwork repics      批量缩放图片
-    python -m forwork mwp         IT 审计工作底稿生成
+    python -m forwork itmwp       IT 审计工作底稿生成
 
 作为库使用的公共 API::
 
     from forwork import get_catalogue
     from forwork import XlsxReader, random_sample_from_reader, write_sample_xlsx
-    from forwork.mwp import myWorkingPaper          # 需要 xlwings
+    from forwork.itmwp import myWorkingPaper          # 需要 xlwings
     from forwork.inspics import insert_images_to_excel  # 需要 xlwings
 """
 

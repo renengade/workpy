@@ -14,7 +14,7 @@
     sample      对 xlsx 做可复现随机抽样并导出
     inspics     把图片按序号批量插入 Excel
     repics      批量缩放图片尺寸
-    mwp         IT 审计工作底稿批量生成
+    itmwp       IT 审计工作底稿批量生成
 
 各子命令详细参数：``python -m forwork <command> -h``。
 """
@@ -24,7 +24,7 @@ from __future__ import annotations
 import argparse
 
 from forwork import __version__
-from forwork import catalogue, datamerge, inspics, mwp, repics, sampling
+from forwork import catalogue, datamerge, inspics, itmwp, repics, sampling
 
 # 子命令名 -> (模块, 简短说明)
 _COMMANDS = {
@@ -33,7 +33,7 @@ _COMMANDS = {
     "sample": (sampling, "对 xlsx 做可复现随机抽样并导出"),
     "inspics": (inspics, "把图片按序号批量插入 Excel"),
     "repics": (repics, "批量缩放图片尺寸"),
-    "mwp": (mwp, "IT 审计工作底稿批量生成"),
+    "itmwp": (itmwp, "IT 审计工作底稿批量生成"),
 }
 
 

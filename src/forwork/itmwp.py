@@ -1,5 +1,5 @@
 """
-IT 审计工作底稿生成工具 — mwp.py
+IT 审计工作底稿生成工具 — itmwp.py
 ===================================
 
 功能说明
@@ -24,7 +24,7 @@ IT 审计工作底稿生成工具 — mwp.py
    (其他均为 Python 内置模块：argparse, os, re, shutil, calendar, zipfile, xml)
 
 用法示例
-   python mwp.py huada 蒋jj limoumou 2026.7.27 2026 ELC SD OM CM
+   python -m forwork itmwp huada 蒋jj limoumou 2026.7.27 2026 ELC SD OM CM
 
 """
 
@@ -88,10 +88,10 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="mwp.py",
+        prog="itmwp",
         description="IT 审计工作底稿批量生成工具",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="示例: python mwp.py huada 蒋jj limoumou 2026.7.27 2026 ELC SD OM CM",
+        epilog="示例: python -m forwork itmwp huada 蒋jj limoumou 2026.7.27 2026 ELC SD OM CM",
     )
     configure_parser(parser)
     return parser
