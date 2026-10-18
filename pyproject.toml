@@ -1,16 +1,18 @@
 [project]
-name = "codespace"
+name = "forwork"
 version = "0.1.0"
-description = "Add your description here"
+description = "Derrick 的工作小工具库：文件清单、数据合并、抽样、图片处理与审计底稿生成"
 readme = "README.md"
 requires-python = ">=3.15"
 dependencies = [
     "openpyxl>=3.1.5",
     "pandas>=3.0.6",
+    "pillow>=13.0.0",
+    "xlwings>=0.37.6",
 ]
 
 [project.scripts]
-codespace = "codespace:main"
+forwork = "forwork.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.13.0,<0.14.0"]
