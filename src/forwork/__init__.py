@@ -1,25 +1,42 @@
-"""forwork —— Derrick 的工作小工具库。
+"""forwork —— Derrick 的工作小工具库（文件清单 / 数据合并 / 抽样 / 图片 / 底稿）。
 
-命令行（统一子命令）::
+【调用方式】
+  WSL (Linux)::
 
-    python -m forwork catalogue   生成文件/文件夹清单
-    python -m forwork merge       合并 csv/xlsx 等文件
-    python -m forwork sample      xlsx 随机抽样
-    python -m forwork inspics     图片批量插入 Excel
-    python -m forwork repics      批量缩放图片
-    python -m forwork itmwp       IT 审计工作底稿生成
+      forwork <command> [options]            # 全局命令（uv tool install -e . 后任意目录可用）
+      python -m forwork <command> [options] # 项目目录内直接运行
+      uv run forwork <command> [options]    # 项目目录内用项目虚拟环境运行
 
-作为库使用的公共 API::
+  Windows::
 
-    from forwork import get_catalogue
-    from forwork import XlsxReader, random_sample_from_reader, write_sample_xlsx
-    from forwork.itmwp import myWorkingPaper          # 需要 xlwings
-    from forwork.inspics import insert_images_to_excel  # 需要 xlwings
+      forwork <command> [options]            # 全局命令（uv tool install -e . 后任意目录可用）
+      forwork.exe <command> [options]
+
+【子命令与平台】
+  catalogue  文件/子文件夹清单导出          纯 Python     Linux / Windows
+  merge      csv/xlsx 合并为多种格式        纯 Python     Linux / Windows
+  sample     xlsx 可复现随机抽样            纯标准库     Linux / Windows
+  repics     图片批量缩放                  Pillow        Linux / Windows
+  inspics    图片批量插入 Excel            xlwings       仅 Windows（需本机 Excel）
+  itmwp      IT 审计底稿批量生成           xlwings       仅 Windows（需本机 Excel）
+
+【作为库使用】
+  公共 API::
+
+      from forwork import get_catalogue
+      from forwork import XlsxReader, random_sample_from_reader, write_sample_xlsx
+
+  子模块 API（按需导入）::
+
+      from forwork.datamerge import find_files, load_files, write_all
+      from forwork.repics import reduce_size
+      from forwork.inspics import insert_images_to_excel   # 需要 xlwings
+      from forwork.itmwp import myWorkingPaper             # 需要 xlwings
 """
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from forwork.catalogue import get_catalogue
 from forwork.sampling import (

@@ -8,3 +8,12 @@ wheels/
 
 # Virtual environments
 .venv
+
+# forwork 运行产物（catalogue / sample / inspics / itmwp 的输出）
+FileName_*.xlsx
+*_sample.xlsx
+output*.xlsx
+~$*.xlsx
+
+# 审计底稿生成目录（ITaudit_v1 的产物）
+*_20*.*/

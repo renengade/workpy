@@ -1,47 +1,62 @@
 """
-IT 审计工作底稿生成工具 — itmwp.py
-===================================
+itmwp — IT 审计工作底稿批量生成（基于模板 + 支持文档清单）。
 
-功能说明
-   基于模板和配置信息，批量生成 IT 审计工作底稿（.xlsx）。
+【调用方式】
+  Windows（**必须**在 Windows 上运行，需要本机安装 Microsoft Excel）::
 
-   1. 读取 FileName.xlsx 中的支持文档清单，自动创建对应目录结构。
-   2. 打开 ITaudit_v1/ 中的模板底稿，将占位信息替换为实际参数：
-      - 文件名中的 XXXX → 客户简称，期间 → 审计年度
-      - 所有 sheet 中的「审计期间」替换为实际审计期间
-      - 所有 sheet 中的「编制/日期」替换为编制人/编制日期
-      - 所有 sheet 中的「复核/日期」替换为复核人/复核日期
-      - 所有替换内容的字体统一改为 Arial
-   3. 在 ITGC 底稿（SD/CM/OM/SA）的内容 sheet 中，找到「支持文档」
-      单元格，在其右侧列向下填入对应的支持文档清单。
-   4. 在 ITELC 底稿的测试汇总表中，按 C 列编码（如 ELC01）匹配
-      FileName.xlsx 中的文档，将文档名称填入 J 列、文档索引填入 K 列。
-   5. 生成的底稿文件自动移入对应文件夹。
-   6. 处理 IT审计发现汇总表 和 IT复杂性情况表。
+      forwork itmwp enterprise derr leader 2026.7.27 2026 ELC SD OM CM
+      forwork itmwp huada 蒋jj limoumou 2026.7.27 2026 ELC SD OM CM
+      forwork itmwp -w D:/Work/2026底稿 enterprise derr leader 2026.7.27 2026 ELC
+      python -m forwork itmwp enterprise derr leader 2026.7.27 2026 ELC
+      python src/forwork/itmwp.py enterprise derr leader 2026.7.27 2026 ELC
 
-依赖
-   pip install xlwings   # 调用 Windows Excel 处理 .xlsx
-   (其他均为 Python 内置模块：argparse, os, re, shutil, calendar, zipfile, xml)
+  WSL (Linux)::
 
-用法示例
-   python -m forwork itmwp enterprise derr leader 2026.7.27 2026 ELC SD OM CM
+      # 不可用：本工具通过 xlwings 调用本机 Excel，Excel 只装在 Windows 上。
+      # 在 WSL 里执行会得到明确提示，而不是一堆异常堆栈。
 
+  库调用::
+
+      from forwork.itmwp import myWorkingPaper
+      with myWorkingPaper("enterprise", "derr", "leader", "2026.07.27", "2026", ["ELC"]) as mwp:
+          mwp.read_support_cont()
+          mwp.paper_contents()
+          mwp.paper_prep("ITaudit_v1")
+
+【平台要求】
+  需要: Windows + Microsoft Excel + xlwings。
+  xlwings 是**延迟导入**的，因此在没有 xlwings 的机器上执行 ``forwork --help``
+  仍然正常；只有真正调用本工具时才会提示缺少依赖。
+
+【工作目录（重要）】
+  本工具需要两个输入，它们都放在**工作目录**里：
+    - ``FileName.xlsx``   支持文档清单（必须有 ``folder`` 列）
+    - ``ITaudit_v1/``     模板底稿目录
+  工作目录默认为**当前工作目录**（命令行所在目录），可用 ``-w/--workdir`` 指定。
+  生成结果也写回该目录，结构为::
+
+      {客户简称}_{审计年度}/
+      ├─ ITELC_企业层面控制_{客户}_{年度}/ITELC_支持性文档_{客户}_{年度}/...
+      └─ ITGC_一般控制测试_{客户}_{年度}/ITGC_支持性文档_{客户}_{年度}/...
+
+【参数含义】
+  client 客户简称（替换模板文件名里的 XXXX）· name 编制人 · reviewer 复核人
+  prepare 编制日期（YYYY.M.D，复核日期自动 = 编制日期 + 1 个月）
+  audity 审计年度（替换模板文件名里的"期间"）· choices 底稿类型 ELC/SD/CM/OM/SA
 """
 
 from __future__ import annotations
 
 import argparse
 import calendar
-import os
 import re
 import shutil
 import sys
 import xml.etree.ElementTree as ET
 import zipfile
+from datetime import datetime
 from pathlib import Path
 from typing import Sequence
-
-import xlwings as xw
 
 # ====================================================================
 #  常量
@@ -58,11 +73,41 @@ VALID_CHOICES = ("ELC", "SD", "CM", "OM", "SA")
 
 
 def _parse_date(value: str) -> str:
-    """验证并归一化日期为 YYYY.MM.DD 格式。"""
+    """验证并归一化日期为 YYYY.MM.DD 格式。
+
+    Args:
+        value: 用户输入的日期，如 ``2026.7.27``。
+
+    Returns:
+        str: 归一化后的日期，如 ``2026.07.27``。
+
+    Raises:
+        argparse.ArgumentTypeError: 格式不对或日期不存在（如 ``2026.13.45``）。
+    """
     if not re.fullmatch(r"\d{4}\.\d{1,2}\.\d{1,2}", value):
-        raise argparse.ArgumentTypeError(f"日期格式错误: {value!r}，应为 YYYY.M.D，如 2026.7.27")
-    y, m, d = value.split(".")
-    return f"{y}.{int(m):02d}.{int(d):02d}"
+        raise argparse.ArgumentTypeError(
+            f"日期格式错误: {value!r}，应为 YYYY.M.D，如 2026.7.27"
+        )
+    y, m, d = (int(x) for x in value.split("."))
+    try:
+        datetime(y, m, d)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(f"日期不存在: {value!r}（{e}）") from e
+    return f"{y}.{m:02d}.{d:02d}"
+
+
+def _import_xlwings():
+    """延迟导入 xlwings，并在不可用时给出可读的错误提示。
+
+    Returns:
+        module: xlwings 模块。
+
+    Raises:
+        SystemExit: 未安装 xlwings 或当前系统不支持 Excel 自动化时退出。
+    """
+    from forwork._excel import require_xlwings
+
+    return require_xlwings()
 
 
 def configure_parser(parser: argparse.ArgumentParser) -> None:
@@ -70,7 +115,9 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("client", help="客户简称（替换文件名中的 XXXX）")
     parser.add_argument("name", help="编制人员姓名")
     parser.add_argument("reviewer", help="复核人员姓名")
-    parser.add_argument("prepare", type=_parse_date, help="编制日期，格式 YYYY.M.D，如 2026.7.27")
+    parser.add_argument(
+        "prepare", type=_parse_date, help="编制日期，格式 YYYY.M.D，如 2026.7.27"
+    )
     parser.add_argument("audity", help="审计年度，如 2026")
     parser.add_argument(
         "choices",
@@ -79,6 +126,12 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
         metavar="TYPE",
         help="底稿类型，可指定一个或多个: ELC SD CM OM SA",
     )
+    parser.add_argument(
+        "-w",
+        "--workdir",
+        default=None,
+        help="工作目录，需包含 FileName.xlsx 与 ITaudit_v1/（默认：当前工作目录）",
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -86,7 +139,11 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="itmwp",
         description="IT 审计工作底稿批量生成工具",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="示例: python -m forwork itmwp enterprise derr leader 2026.7.27 2026 ELC SD OM CM",
+        epilog=(
+            "示例(Windows): forwork itmwp enterprise derr leader 2026.7.27 2026 ELC SD OM CM\n"
+            "注意: 需要 Windows + 本机安装 Microsoft Excel；"
+            "工作目录需包含 FileName.xlsx 与 ITaudit_v1/"
+        ),
     )
     configure_parser(parser)
     return parser
@@ -112,31 +169,85 @@ def _read_folders(path: Path) -> list[str]:
     """用内置 zipfile + xml.etree 读取 FileName.xlsx 的 folder 列。
 
     不使用 pandas/openpyxl 等第三方库，纯 Python 内置模块完成。
-    返回所有文档名称的列表（如 ['ELC01-01 战略规划与执行情况', ...]）。
+
+    Args:
+        path: ``FileName.xlsx`` 的路径（通常在工作目录下）。
+
+    Returns:
+        list[str]: 所有文档名称的列表，如 ``['ELC01-01 战略规划与执行情况', ...]``。
+
+    Raises:
+        FileNotFoundError: 文件不存在。
+        ValueError: 找不到 ``folder`` 列。
     """
+    if not path.is_file():
+        raise FileNotFoundError(f"找不到支持文档清单: {path}")
+
     ns = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    rel_ns = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
     with zipfile.ZipFile(path, "r") as z:
+        names = z.namelist()
+
         # 读取共享字符串表（sharedStrings.xml）
         strings: list[str] = []
-        if "xl/sharedStrings.xml" in z.namelist():
+        if "xl/sharedStrings.xml" in names:
             root = ET.parse(z.open("xl/sharedStrings.xml")).getroot()
             for si in root.findall(".//s:si", ns):
                 t = si.find(".//s:t", ns)
                 strings.append(t.text if t is not None and t.text else "")
 
-        # 读取第一个 sheet（sheet1.xml）
-        rows = ET.parse(z.open("xl/worksheets/sheet1.xml")).getroot().findall(".//s:row", ns)
+        def cell_text(cell) -> str | None:
+            """取单元格的显示文本，兼容共享字符串与内联字符串。"""
+            if cell.get("t") == "inlineStr":
+                t = cell.find(".//s:is//s:t", ns)
+                return t.text if t is not None else None
+            v = cell.find(".//s:v", ns)
+            if v is None or not v.text:
+                return None
+            if cell.get("t") == "s":
+                try:
+                    return strings[int(v.text)]
+                except (ValueError, IndexError):
+                    return None
+            return v.text
+
+        # 定位第一个工作表（解析 workbook.xml 的关系，失败则退回 sheet1.xml）
+        sheet_member = "xl/worksheets/sheet1.xml"
+        if "xl/workbook.xml" in names:
+            try:
+                wb_root = ET.fromstring(z.read("xl/workbook.xml"))
+                rels: dict[str, str] = {}
+                if "xl/_rels/workbook.xml.rels" in names:
+                    rels_root = ET.fromstring(z.read("xl/_rels/workbook.xml.rels"))
+                    for rel in rels_root:
+                        rid = rel.get("Id")
+                        target = rel.get("Target") or ""
+                        if rid:
+                            rels[rid] = target
+                first_sheet = wb_root.find(".//s:sheets/s:sheet", ns)
+                if first_sheet is not None:
+                    rid = first_sheet.get(f"{{{rel_ns}}}id")
+                    target = rels.get(rid or "", "").lstrip("/")
+                    if target:
+                        if not target.startswith("xl/"):
+                            target = "xl/" + target
+                        if target in names:
+                            sheet_member = target
+            except ET.ParseError:
+                pass
+
+        if sheet_member not in names:
+            raise ValueError(f"{path.name} 中找不到工作表数据")
+
+        rows = ET.parse(z.open(sheet_member)).getroot().findall(".//s:row", ns)
 
         # 找到列头为 "folder" 的列号
         folder_col: str | None = None
         for row in rows:
             for cell in row.findall(".//s:c", ns):
                 r = cell.get("r", "")
-                v = cell.find(".//s:v", ns)
-                if v is None or not v.text:
-                    continue
-                text = strings[int(v.text)] if cell.get("t") == "s" else v.text
+                text = cell_text(cell)
                 if text == "folder":
                     folder_col = "".join(ch for ch in r if ch.isalpha())
                     break
@@ -144,7 +255,7 @@ def _read_folders(path: Path) -> list[str]:
                 break
 
         if folder_col is None:
-            return []
+            raise ValueError(f"{path.name} 中未找到 'folder' 列")
 
         # 读取该列的所有数据行（跳过列头 "folder"）
         folders: list[str] = []
@@ -153,12 +264,10 @@ def _read_folders(path: Path) -> list[str]:
                 r = cell.get("r", "")
                 if "".join(ch for ch in r if ch.isalpha()) != folder_col:
                     continue
-                v = cell.find(".//s:v", ns)
-                if v is None or not v.text:
+                text = cell_text(cell)
+                if not text or text == "folder":
                     continue
-                text = strings[int(v.text)] if cell.get("t") == "s" else v.text
-                if text != "folder":
-                    folders.append(text)
+                folders.append(text)
         return folders
 
 
@@ -183,6 +292,7 @@ class myWorkingPaper:
         prepare: str,
         audity: str,
         choices: Sequence[str],
+        workdir: str | Path | None = None,
     ):
         """初始化参数
 
@@ -193,11 +303,14 @@ class myWorkingPaper:
             prepare:  编制日期，已归一化为 "YYYY.MM.DD"
             audity:   审计年度，如 "2026"
             choices:  底稿类型列表，如 ("ELC", "SD")
+            workdir:  工作目录（需含 FileName.xlsx 与 ITaudit_v1/）。
+                      传 None 则使用当前工作目录。
         """
-        # 脚本所在目录作为根目录，不修改当前工作目录
-        self.wpath = Path(__file__).resolve().parent
+        # 工作目录：存放 FileName.xlsx、ITaudit_v1/ 以及生成结果
+        self.wpath = Path(workdir).resolve() if workdir else Path.cwd()
 
         # === Excel 实例设置 ===
+        xw = _import_xlwings()
         self.app = xw.App(visible=False, add_book=False)  # 后台运行，不显示 Excel 窗口
         self.app.display_alerts = False  # 关闭确认弹窗（覆盖保存等）
         self.app.screen_updating = False  # 关闭屏幕刷新（提升速度）
@@ -232,8 +345,26 @@ class myWorkingPaper:
 
         Returns:
             dict: 如 {'ELC': ['ELC01-01 战略规划与执行情况', ...], 'SD': [...], ...}
+
+        Raises:
+            SystemExit: FileName.xlsx 不存在、没有 'folder' 列或读不出数据时退出。
         """
-        for item in _read_folders(self.wpath / FILENAME_XLSX):
+        try:
+            items = _read_folders(self.wpath / FILENAME_XLSX)
+        except (FileNotFoundError, ValueError, zipfile.BadZipFile) as e:
+            raise SystemExit(
+                f"[错误] 读取支持文档清单失败: {e}\n"
+                f"请确认工作目录下存在 {FILENAME_XLSX}（含 'folder' 列）。"
+                f"当前工作目录: {self.wpath}"
+            ) from e
+
+        if not items:
+            raise SystemExit(
+                f"[错误] {FILENAME_XLSX} 的 'folder' 列没有任何数据。"
+                f"当前工作目录: {self.wpath}"
+            )
+
+        for item in items:
             key = re.findall(r"\d+|\D+", item)[0]  # 提取前缀（ELC / SD / CM / OM / SA）
             self.support_cont.setdefault(key, []).append(item)
 
@@ -457,15 +588,24 @@ class myWorkingPaper:
         """执行所有底稿的模板处理
 
         Args:
-            ptemplate: 模板文件所在目录名（如 "ITaudit_v1"）
+            ptemplate: 模板文件所在目录名（如 "ITaudit_v1"），相对于工作目录。
+
+        Raises:
+            SystemExit: 模板目录不存在时退出。
         """
         template_path = self.wpath / ptemplate
+        if not template_path.is_dir():
+            raise SystemExit(
+                f"[错误] 找不到模板目录: {template_path}\n"
+                f"请把 ITaudit_v1/ 放到工作目录下，或用 -w/--workdir 指定工作目录。"
+            )
 
         # 列出模板目录下所有 .xlsx 文件（排除 Excel 临时文件 ~$）
         files = [
-            f for f in template_path.iterdir() if f.is_file() and f.suffix == ".xlsx" and not f.name.startswith("~$")
+            f
+            for f in template_path.iterdir()
+            if f.is_file() and f.suffix == ".xlsx" and not f.name.startswith("~$")
         ]
-        file_names = [f.name for f in files]
 
         # 按类型分组：ITGC 文件以 "_" 分割后取第 2 段作为键（如 "SD"）
         gc = {f.name.split("_")[1]: f for f in files if f.name.startswith("ITGC")}
@@ -495,7 +635,15 @@ class myWorkingPaper:
 
             # 按类型执行不同的文档写入逻辑
             if cont == "ELC":
-                self._fill_elc_docs(wb.sheets["测试汇总表"])  # ELC：按编码匹配文档索引
+                # ELC：按编码匹配文档索引（模板缺少「测试汇总表」时跳过并提示）
+                try:
+                    summary_sheet = wb.sheets["测试汇总表"]
+                except KeyError:
+                    print(
+                        "Warning: ELC 模板中缺少「测试汇总表」sheet，跳过文档索引填充"
+                    )
+                else:
+                    self._fill_elc_docs(summary_sheet)
             else:
                 self.fill_doc(cont, wb)  # GC：按 sheet 前缀填入支持文档
 
@@ -515,7 +663,9 @@ class myWorkingPaper:
                 new_path = self.wpath / new
                 wb.save(str(new_path))
                 wb.close()
-                shutil.move(str(new_path), str(self.wpath / f"{self.client}_{self.audity}"))
+                shutil.move(
+                    str(new_path), str(self.wpath / f"{self.client}_{self.audity}")
+                )
 
         # === 移动生成的底稿到对应的子目录 ===
         base = self.wpath / f"{self.client}_{self.audity}"
@@ -531,7 +681,11 @@ class myWorkingPaper:
         # 移动所有 ITGC 底稿
         gc_dir = base / f"ITGC_一般控制测试_{self.client}_{self.audity}"
         if gc_dir.exists():
-            for f in [x for x in self.wpath.iterdir() if x.is_file() and x.name.startswith("ITGC")]:
+            for f in [
+                x
+                for x in self.wpath.iterdir()
+                if x.is_file() and x.name.startswith("ITGC")
+            ]:
                 shutil.move(str(f), str(gc_dir / f.name))
 
 
@@ -540,8 +694,40 @@ class myWorkingPaper:
 # ====================================================================
 
 
+def _validate_inputs(workdir: Path) -> None:
+    """校验工作目录下的输入文件是否齐全可读（在启动 Excel 之前调用）。
+
+    Args:
+        workdir: 工作目录，需包含 ``FileName.xlsx`` 与 ``ITaudit_v1/``。
+
+    Raises:
+        SystemExit: 缺少输入文件、或 ``FileName.xlsx`` 结构不对时退出。
+    """
+    filename_xlsx = workdir / FILENAME_XLSX
+    if not filename_xlsx.is_file():
+        raise SystemExit(
+            f"[错误] 工作目录下找不到 {FILENAME_XLSX}: {workdir}\n"
+            f"       请切换到包含 {FILENAME_XLSX} 和 {TEMPLATE_DIR}/ 的目录，"
+            f"或用 -w/--workdir 指定。"
+        )
+    if not (workdir / TEMPLATE_DIR).is_dir():
+        raise SystemExit(f"[错误] 工作目录下找不到模板目录 {TEMPLATE_DIR}/: {workdir}")
+    try:
+        items = _read_folders(filename_xlsx)
+    except (FileNotFoundError, ValueError, zipfile.BadZipFile) as e:
+        raise SystemExit(f"[错误] 读取 {FILENAME_XLSX} 失败: {e}") from e
+    if not items:
+        raise SystemExit(
+            f"[错误] {FILENAME_XLSX} 的 'folder' 列没有任何数据: {filename_xlsx}"
+        )
+
+
 def run(args: argparse.Namespace) -> int:
-    """执行底稿生成，返回退出码。"""
+    """执行底稿生成，返回退出码（0 成功，1 前置检查失败）。"""
+    # 先校验工作目录与输入文件，再启动 Excel（避免白启动一个 Excel 进程）
+    workdir = Path(args.workdir).resolve() if args.workdir else Path.cwd()
+    _validate_inputs(workdir)
+
     with myWorkingPaper(
         client=args.client,
         name=args.name,
@@ -549,6 +735,7 @@ def run(args: argparse.Namespace) -> int:
         prepare=args.prepare,
         audity=args.audity,
         choices=args.choices,
+        workdir=workdir,
     ) as mwp:
         mwp.read_support_cont(False)  # 1. 读取 FileName.xlsx → 支持文档字典
         mwp.paper_contents()  # 2. 创建输出目录结构

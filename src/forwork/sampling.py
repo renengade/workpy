@@ -1,10 +1,41 @@
 #!/usr/bin/env python3
-"""纯标准库 Excel(.xlsx) 读写：结构分析 + 可复现随机抽样 + 选列 + 结果导出。
+"""sampling — 纯标准库读取 .xlsx，做结构分析 + 可复现随机抽样 + 结果导出。
 
-命令行::
+【调用方式】
+  WSL (Linux)::
 
-    python -m forwork sample 数据.xlsx -s Sheet1 -n 10 -S 42 -c A列,B列 -o -p 结果.xlsx
-    python sampling.py 数据.xlsx          # 直接运行，进入交互模式
+      forwork sample /mnt/d/Work/数据.xlsx                        # 交互模式（逐项提问）
+      forwork sample 数据.xlsx -s Sheet1 -n 10 -S 42 -c A列,B列 -o -p 结果.xlsx
+      python -m forwork sample 数据.xlsx -s Sheet1 -n 10 -S 42
+      python src/forwork/sampling.py 数据.xlsx                    # 直接运行单文件
+
+  Windows::
+
+      forwork sample D:/Work/数据.xlsx                            # 交互模式
+      forwork sample D:/Work/数据.xlsx -s Sheet1 -n 10 -S 42 -c A列,B列 -o -p 结果.xlsx
+
+  库调用::
+
+      from forwork import XlsxReader, random_sample_from_reader, write_sample_xlsx
+      reader = XlsxReader("数据.xlsx")
+      rows = random_sample_from_reader(reader, "Sheet1", n=10, seed=42)
+
+【平台要求】
+  **纯标准库实现**（zipfile + xml.etree），不依赖 pandas / openpyxl，
+  Linux / Windows 均可运行，无需 Excel。
+
+【路径规则】
+  - Windows: ``D:/Work/数据.xlsx``
+  - WSL 访问 Windows 磁盘: ``/mnt/d/Work/数据.xlsx``
+
+【默认值】
+  - 不传 ``-s``/``-n``/``-S``/``-c`` 时进入交互模式，按提示逐项输入。
+  - ``-s`` 指定 sheet 名；``-n`` 样本量；``-S`` 随机种子（同种子结果可复现）；
+    ``-c`` 逗号分隔的列名（留空 = 全部列）。
+  - 不传 ``-p`` 时结果导出到**当前工作目录**，文件名 ``<原文件名>_<sheet>_sample.xlsx``。
+
+【注意】
+  只支持 .xlsx（OOXML），不支持 .xls。
 """
 
 import argparse
@@ -132,7 +163,7 @@ class XlsxReader:
         if t == "s":
             try:
                 return self._shared_strings[int(text)]
-            except ValueError, IndexError:
+            except (ValueError, IndexError):
                 return text
         if t == "b":
             return text == "1"
@@ -157,7 +188,18 @@ class XlsxReader:
             return text
 
     def sheet_names(self):
+        """返回工作簿中所有 sheet 名（按工作簿顺序）。"""
         return list(self._sheet_paths)
+
+    def release_sheets(self, except_name: str | None = None) -> None:
+        """释放已解析 sheet 的缓存，释放内存。
+
+        Args:
+            except_name: 保留该 sheet 的缓存（其余清空）。传 None 则全部清空。
+        """
+        for name in list(self._cache):
+            if name != except_name:
+                self._cache.pop(name, None)
 
     def get_rows(self, sheet_name):
         if sheet_name in self._cache:
@@ -225,7 +267,7 @@ class XlsxReader:
                 type_names.append("mixed:" + "+".join(sorted(ts)))
         return {
             "columns": header,
-            "types": dict(zip(header, type_names)),
+            "types": dict(zip(header, type_names, strict=True)),
             "row_count": len(rows) - 1,
         }
 
@@ -243,8 +285,11 @@ def random_sample_from_reader(reader, sheet_name, n=5, seed=42, columns=None):
         if missing:
             raise KeyError(f"列不存在: {missing}，可用列: {header}")
         idx = [header.index(c) for c in columns]
-        return [{c: row[i] for c, i in zip(columns, idx)} for row in sample]
-    return [dict(zip(header, row)) for row in sample]
+        return [
+            {c: row[i] for c, i in zip(columns, idx, strict=True)} for row in sample
+        ]
+    # 行数据可能比表头短（尾部空单元格被省略），按较短的一边截断
+    return [dict(zip(header, row, strict=False)) for row in sample]
 
 
 # ---------------- xlsx 写入（导出抽样结果） ----------------
@@ -396,9 +441,7 @@ def configure_parser(p: argparse.ArgumentParser) -> None:
         action="store_true",
         help="将抽样结果写入 xlsx 文件（默认不输出；指定 --path 时自动开启）",
     )
-    p.add_argument(
-        "-p", "--path", help="输出文件路径（xlsx 格式；默认: 本脚本所在目录）"
-    )
+    p.add_argument("-p", "--path", help="输出文件路径（xlsx 格式；默认: 当前工作目录）")
 
 
 def run(args: argparse.Namespace) -> int:
@@ -415,11 +458,11 @@ def run(args: argparse.Namespace) -> int:
     try:
         reader = XlsxReader(args.file)
     except FileNotFoundError:
-        raise SystemExit(f"文件不存在: {args.file}")
-    except KeyError, zipfile.BadZipFile, OSError:
+        raise SystemExit(f"文件不存在: {args.file}") from None
+    except (KeyError, zipfile.BadZipFile, OSError):
         raise SystemExit(
             f"不是有效的 .xlsx 文件（不支持 .xls 或文件已损坏）: {args.file}"
-        )
+        ) from None
     names = reader.sheet_names()
     if not names:
         raise SystemExit("文件中没有任何 sheet")
@@ -478,9 +521,8 @@ def run(args: argparse.Namespace) -> int:
     else:
         cols = [c.strip() for c in cols.split(",")]
 
-    for name in names:
-        if name != sheet:
-            reader._cache.pop(name, None)
+    # 只保留目标 sheet 的缓存，释放其它 sheet 占用的内存
+    reader.release_sheets(sheet)
     sample = random_sample_from_reader(reader, sheet, n=n, seed=seed, columns=cols)
     print(f"\n抽样结果（{sheet}，n={n}，seed={seed}）:")
     for row in sample:
@@ -499,9 +541,7 @@ def run(args: argparse.Namespace) -> int:
         elif args.path:
             out_path = args.path
         else:
-            out_path = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), default_name
-            )
+            out_path = os.path.join(os.getcwd(), default_name)
         if not out_path.lower().endswith(".xlsx"):
             out_path += ".xlsx"
         os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
